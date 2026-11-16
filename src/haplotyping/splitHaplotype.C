@@ -122,6 +122,7 @@ public:
 
   uint32                    _numThreads      = 0;   //  Reset in constructor.
   uint32                    _maxMemory       = 0;
+  bool                      _tabular         = false;
 };
 
 
@@ -236,8 +237,8 @@ hapData::initializeKmerTable(uint32 maxMemory) {
 
   uint32 minFreq = getMinFreqFromHistogram(histoName);
 
-  fprintf(stdout, "--  Haplotype '%s':\n", merylName);
-  fprintf(stdout, "--   use kmers with frequency at least %u.\n", minFreq);
+  fprintf(stderr, "--  Haplotype '%s':\n", merylName);
+  fprintf(stderr, "--   use kmers with frequency at least %u.\n", minFreq);
 
   //  Construct an exact lookup table.
   //
@@ -367,21 +368,21 @@ loadReadBatch(void *G) {
 
     if (g->_inNames.empty() == false) {
       if (g->_seqs == nullptr) {
-        fprintf(stdout, "-- Begin    processing file %s\n", g->_inNames.front());
+        fprintf(stderr, "-- Begin    processing file %s\n", g->_inNames.front());
         g->_seqs = openSequenceFile(g->_inNames.front());
       }
 
       if (g->_seqs->loadSequence(seq) == false) {   //  Failed to load a sequence, hit EOF.
         if (g->_seqCounts == 0) {
-            fprintf(stdout, "--\n");
-            fprintf(stdout, "-- ERROR:   loaded no reads from file %s, are you sure it is a valid fastq/fasta file?\n", g->_inNames.front());
-            fprintf(stdout, "--\n");
-            fflush(stdout);
+            fprintf(stderr, "--\n");
+            fprintf(stderr, "-- ERROR:   loaded no reads from file %s, are you sure it is a valid fastq/fasta file?\n", g->_inNames.front());
+            fprintf(stderr, "--\n");
+            fflush(stderr);
             exit(1);
         }
 
-        fprintf(stdout, "-- Finished processing file %s with %d records\n", g->_inNames.front(), g->_seqCounts);
-        fprintf(stdout, "--\n");
+        fprintf(stderr, "-- Finished processing file %s with %d records\n", g->_inNames.front(), g->_seqCounts);
+        fprintf(stderr, "--\n");
 
         delete g->_seqs;                            //  Discard the file and try the next.
 
@@ -479,11 +480,11 @@ processReadBatch(void *G, void *T, void *S) {
     if (0) {
       if (((sco2nd < DBL_MIN) && (sco1st > DBL_MIN)) ||
           ((sco2nd > DBL_MIN) && (sco1st / sco2nd > g->_minRatio)))
-        fprintf(stdout, "hap1st %1u sco1st %9.7f matches %6u   hap2 %1u sco2nd %9.7f matches %6u -> %1u\n",
+        fprintf(stderr, "hap1st %1u sco1st %9.7f matches %6u   hap2 %1u sco2nd %9.7f matches %6u -> %1u\n",
                 hap1st, sco1st, matches[hap1st],
                 hap2nd, sco2nd, matches[hap2nd], hap1st);
       else
-        fprintf(stdout, "hap1st %1u sco1st %9.7f matches %6u   hap2 %1u sco2nd %9.7f matches %6u -> AMBIGUOUS\n",
+        fprintf(stderr, "hap1st %1u sco1st %9.7f matches %6u   hap2 %1u sco2nd %9.7f matches %6u -> AMBIGUOUS\n",
                 hap1st, sco1st, matches[hap1st],
                 hap2nd, sco2nd, matches[hap2nd]);
     }
@@ -529,8 +530,12 @@ outputReadBatch(void *G, void *S) {
       g->_haps[ff]->nBases += s->_bases[ii].length();
     }
 
-    outputFASTA(F, s->_bases[ii].string(), s->_bases[ii].length(), 0,
-                "%s", s->_names[ii].string());
+    if (g->_tabular) {
+      fprintf(stdout, "%s\t%1u\n", s->_names[ii].string(), ff + 1);
+    } else if (F != nullptr) {
+      outputFASTA(F, s->_bases[ii].string(), s->_bases[ii].length(), 0,
+                  "%s", s->_names[ii].string());
+    }
   }
 
   delete s;    //  We should recycle this, but hard to do.
@@ -582,6 +587,10 @@ main(int argc, char **argv) {
     } else if (strcmp(argv[arg], "-v") == 0) {
       beVerbose = true;
 
+    } else if ((strcmp(argv[arg], "-tabular") == 0) ||
+               (strcmp(argv[arg], "--tabular") == 0)) {
+      G->_tabular = true;
+
 
     } else {
       char *s = new char [1024];
@@ -631,6 +640,7 @@ main(int argc, char **argv) {
     fprintf(stderr, "  Output fasta files are 'gzip -1' compressed if they end in '.gz'.\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "  -A ambiguous.fasta.gz\n");
+    fprintf(stderr, "  -tabular         write <read_id>\\t<haplotype> to stdout instead of FASTA files\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "PARAMETERS\n");
     fprintf(stderr, "  -cr ratio        minimum ratio between best and second best to classify\n");
@@ -647,7 +657,8 @@ main(int argc, char **argv) {
   }
 
   G->openInputs();
-  G->openOutputs();
+  if (G->_tabular == false)
+    G->openOutputs();
 
   G->loadHaplotypeData();
 
@@ -672,11 +683,11 @@ main(int argc, char **argv) {
   //  Write the log to stdout.
 
   for (uint32 ii=0; ii<G->_haps.size(); ii++)
-    fprintf(stdout, "-- %8u reads %12lu bases written to haplotype file %s.\n", G->_haps[ii]->nReads, G->_haps[ii]->nBases, G->_haps[ii]->outputName);
-  fprintf(stdout, "-- %8u reads %12lu bases written to haplotype file %s.\n", G->_ambiguousReads, G->_ambiguousBases, G->_ambiguousName);
-  fprintf(stdout, "--\n");
-  fprintf(stdout, "-- %8u reads %12lu bases filtered for being too short.\n", G->_filteredReads, G->_filteredBases);
-  fprintf(stdout, "--\n");
+    fprintf(stderr, "-- %8u reads %12lu bases written to haplotype file %s.\n", G->_haps[ii]->nReads, G->_haps[ii]->nBases, G->_haps[ii]->outputName);
+  fprintf(stderr, "-- %8u reads %12lu bases written to haplotype file %s.\n", G->_ambiguousReads, G->_ambiguousBases, G->_ambiguousName);
+  fprintf(stderr, "--\n");
+  fprintf(stderr, "-- %8u reads %12lu bases filtered for being too short.\n", G->_filteredReads, G->_filteredBases);
+  fprintf(stderr, "--\n");
 
   delete    SS;
   delete [] TD;

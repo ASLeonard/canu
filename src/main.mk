@@ -222,6 +222,7 @@ SUBMAKEFILES := stores/dumpBlob.mk \
                 seqrequester/src/seqrequester/seqrequester.mk \
                 \
                 meryl/src/meryl/meryl.mk \
+                meryl/src/meryl-lookup/meryl-lookup.mk \
                 \
                 overlapInCore/overlapInCore.mk \
                 overlapInCore/overlapInCorePartition.mk \
